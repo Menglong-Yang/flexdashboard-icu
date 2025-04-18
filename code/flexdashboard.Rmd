@@ -231,6 +231,18 @@ The PhysioNet/Computing in Cardiology Challenge 2019</a>, which provides data on
 
 ## Row 2
 
+### GitHub repository
+
+<div style="margin-bottom: 0; font-size:20px;">
+The link to the GitHub repository is 
+<a href="https://github.com/Menglong-Yang/flexdashboard-icu/tree/main" target="_blank">
+https://github.com/Menglong-Yang/flexdashboard-icu</a>.
+</div>
+
+-----------------------------------------------------------------------
+
+## Row 3
+
 ### About This Dashboard
 
 <div style="margin-bottom: 0; font-size:20px;">
