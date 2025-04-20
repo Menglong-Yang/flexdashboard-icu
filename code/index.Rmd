@@ -1,0 +1,254 @@
+---
+title: "ICU Patients flexdashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+
+# Libraries
+library(flexdashboard)
+library(here)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(stringr)
+library(survival)
+library(survminer)
+library(DT)
+library(htmltools)
+```
+
+# Tables
+=======================================================================
+
+### Table 1 An interactive data table created from DT()
+
+**Key Takeaways:**  
+This interactive table presents ICU patient variables with clear labels and units for easy interpretation. Users can explore, sort, and filter key clinical variables to better understand patient characteristics.
+
+```{r}
+#Read in data
+df <- readRDS(here("data", "data_cleaned.rds"))
+
+# Goal: Create a clean, interactive data table for ICU patient variables with meaningful labels and units
+# Want to allow users to easily explore, sort, and filter key clinical variables in a readable format
+
+# Select key varibles for the table and rename columns with title case and add units in parentheses
+icu_table <- df %>%
+  select(
+    `Heart Rate (Beats Per Minute)` = HR,
+    `Pulse Oximetry (%)` = O2Sat,
+    `Temperature (°C)` = Temp,
+    `Systolic Blood Pressure (mm Hg)` = SBP,
+    `Mean Arterial Pressure (mm Hg)` = MAP,
+    `Respiration Rate (Breaths Per Minute)` = Resp,
+    `Blood Urea Nitrogen (mg/dL)` = BUN,
+    `Creatinine (mg/dL)` = Creatinine,
+    `Serum Glucose (mg/dL)` = Glucose,
+    `Potassium (mmol/L)` = Potassium,
+    `Hematocrit (%)` = Hct,
+    `Hemoglobin (g/dL)` = Hgb,
+    `Leukocyte Count (Count/L)` = WBC,
+    `Platelet Count (Count/L)` = Platelets,
+    `Age (Years)` = Age,
+    `Sepsis Status` = SepsisLabel,
+    `Gender` = Gender,
+    `Age Group` = Age_group
+  )
+
+# Create interactive DataTable
+htmltools::tags$div(style = 'height:600px; overflow-y:auto;',
+datatable(icu_table, 
+          options = list(
+            pageLength = 10,       # Show 10 rows per page by default
+            autoWidth = TRUE,      # Auto adjust column width
+            scrollX = TRUE,
+            searching = TRUE,      # Enable search box
+            dom = 'Blfrtip',       
+            columnDefs = list(     
+              list(className = 'dt-center', targets = c(3, 4, 5, 6, 7)), # Center-align numeric columns
+              list(orderable = TRUE, targets = '_all'),  # Make all columns sortable
+              list(targets = '_all', width = '120px') 
+            )
+          ),
+          rownames = FALSE,        # Hide row numbers
+          filter = "top"           # Add column filters
+)
+)
+
+```
+
+
+-----------------------------------------------------------------------
+
+
+
+# Figures
+=======================================================================
+
+### Figure 1 Side by side boxplot Comparing ICU admission time by age group and gender (Plotly)
+
+**Key Takeaways:** 
+
+This plot compares ICU admission time across age groups and highlights gender differences using color. Each dot represents an individual patient, revealing the distribution and variation within each group. Older age groups show greater variability in admission times, while gender differences appear minimal.
+
+```{r,echo=FALSE,message=FALSE, warning=FALSE}
+#Read in data
+df <- readRDS(here("data", "data_cleaned.rds"))
+
+# Convert numerical variable to categorical labels
+df <- df %>%
+  mutate(
+    Gender = case_when(
+      Gender == 0 ~ "Female",
+      Gender == 1 ~ "Male",
+      TRUE ~ as.character(Gender)  
+    ),
+    SepsisLabel = case_when(
+      SepsisLabel == 0 ~ "Non-Sepsis",
+      SepsisLabel == 1 ~ "Sepsis",
+      TRUE ~ as.character(SepsisLabel)  
+    )
+  )
+
+#Goal: Side-by-side boxplot of hospital to ICU admission time based on age group and gender (distinguished by color) 
+#Want to show individual patients' ICU admission time (jittered datapoints next to the boxplot and color-coded by gender)
+
+# Sample 5% of data to reduce the number of points and improve interactive performance
+set.seed(707)
+df_sampled <- df %>% group_by(Age_group, Gender) %>% sample_frac(0.05)
+
+# Create a new variable to separate jitter points from boxplot
+df_sampled$AgeGroup_jitter <- as.numeric(factor(df_sampled$Age_group)) + 0.25  
+
+# Create ggplot with side-by-side boxplots and jittered points
+# Each jitter point is color coded by gender
+p <- ggplot(df, aes(x = as.factor(Age_group), y = HospAdmTime, fill = Gender)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5, width = 0.4, position = position_nudge(x = -0.25)) + 
+  geom_jitter(data = df_sampled, aes(x = AgeGroup_jitter, 
+                                      text = paste("Age Group:", Age_group, 
+                                                   "<br>ICU Admission Time (Hours):", HospAdmTime, 
+                                                   "<br>Gender:", Gender)), 
+              width = 0.15, size = 2, alpha = 0.7) + 
+  scale_x_discrete(labels = levels(factor(df$Age_group))) +  
+  labs(title = "Hospital to ICU Admission Time by Age Group",
+       x = "Age Group",
+       y = "ICU Admission Time (Hours)",
+       fill = "Gender") +  
+  theme_minimal()
+
+# Convert to interactive Plotly
+htmltools::div(
+  style = "max-width: 100%; overflow-x: auto; overflow-y: auto; padding: 5px;",
+  ggplotly(p, tooltip = "text") %>%
+  style(boxpoints = FALSE)
+)
+```
+
+
+-----------------------------------------------------------------------
+
+### Figure 2 Survival Curves comparing ICU admission across sepsis and non-sepsis patients (Plotly)
+
+**Key Takeaways:** 
+
+This plot compares ICU admission probability over time between sepsis and non-sepsis patients, using color to distinguish the two groups. The interactive tooltips allow users to explore how admission probability changes by time and sepsis status, providing a clearer view of group differences. ICU admission probability drops more steeply for sepsis patients in the early hours after hospital admission.
+
+```{r}
+# Goal: Survival curves to compare ICU admission probability over time for sepsis and non-sepsis patients, with color distinction between groups.
+# Want to display ICU admission probability with interactive tooltips showing time, probability, and sepsis status.
+
+# Read in data
+df <- readRDS(here("data", "data_cleaned.rds"))
+
+# Perform Kaplan-Meier survival analysis
+df <- df %>%
+  mutate(
+    SepsisLabel = factor(SepsisLabel, levels = c(0, 1), labels = c("Non-Sepsis", "Sepsis")),
+    status = 1,
+    SurvObj = Surv(time = HospAdmTime, event = status)
+  )
+
+fit <- survfit(SurvObj ~ SepsisLabel, data = df)
+
+# Generate the Kaplan-Meier survival plot 
+p <- ggsurvplot(
+  fit, data = df,
+  risk.table = FALSE,  
+  conf.int = FALSE,    
+  pval = FALSE,
+  title = "Survival Curves by Sepsis Status",
+  xlab = "Time from Hospital Admission to ICU Admission (Hours)",
+  ylab = "ICU Admission Probability (%)",
+  legend.title = "Sepsis Status",
+  legend.labs = c("Non-Sepsis", "Sepsis"), 
+  palette = c("red", "cyan"),  
+  ggtheme = theme_minimal()
+)
+
+# Add interactive tooltips
+plot_with_text <- p$plot +
+  geom_line(aes(
+    text = paste0(
+      "Time: ", round(time, 2), " hrs<br>",
+      "ICU Admission Probability: ", round(surv * 100, 2), "%<br>",
+      "Sepsis Status: ", strata
+    )
+  ))
+
+# Convert to interactive Plotly
+htmltools::div(
+  style = "max-width: 100%; overflow-x: auto; overflow-y: auto; padding: 5px;",
+  ggplotly(plot_with_text, tooltip = "text")
+)
+
+```
+
+-----------------------------------------------------------------------
+
+# Dataset Description
+=======================================================================
+## Row 1
+
+### Dataset Description
+
+<div style="font-size:20px">
+
+These visualizations are based on the ICU patients dataset from<a href="https://physionet.org/content/challenge-2019/1.0.0/#files-panel" target="_blank">
+The PhysioNet/Computing in Cardiology Challenge 2019</a>, which provides data on 40,336 sepsis and non-sepsis patients. The dataset was collected from the electronic medical record systems of Beth Israel Deaconess Medical Center and Emory University Hospital over the past decade. After removing observations with missing key variables, a total of 34,750 records were retained.
+
+</div>
+
+-----------------------------------------------------------------------
+
+## Row 2
+
+### GitHub repository
+
+<div style="margin-bottom: 0; font-size:20px;">
+The link to the GitHub repository is 
+<a href="https://github.com/Menglong-Yang/flexdashboard-icu/tree/main" target="_blank">
+https://github.com/Menglong-Yang/flexdashboard-icu</a>.
+</div>
+
+-----------------------------------------------------------------------
+
+## Row 3
+
+### About This Dashboard
+
+<div style="margin-bottom: 0; font-size:20px;">
+
+This dashboard helps doctors understand how different vital signs and lab results are related to ICU admissions. The findings is valuable for healthcare providers to better identify high-risk patients who need ICU care urgently. 
+
+</div>
+
+-----------------------------------------------------------------------

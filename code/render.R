@@ -5,8 +5,8 @@ here::i_am(
 knitr::opts_knit$set(root.dir = here::here()) 
 
 rmarkdown::render(
-  here::here("code/flexdashboard.Rmd"),
-  output_dir = here::here("report")
+  here::here("code/index.Rmd"),
+  output_dir = here::here("docs")
 )
 
 
