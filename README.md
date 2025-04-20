@@ -7,7 +7,7 @@ This interactive flexdashboard visualizes clinical data from ICU patients to exp
 - A side-by-side boxplot comparing ICU admission times across different age groups and genders
 - A survival curve plot showing how sepsis status affects the probability of ICU admission over time
 
-The interactive flexdashboard is in the folder `report/`.
+The interactive flexdashboard is in the folder `docs/`.
 
 ## Data
 
