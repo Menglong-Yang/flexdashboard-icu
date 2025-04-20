@@ -19,7 +19,7 @@ These visualizations are based on the ICU patients dataset from **The PhysioNet/
 
 -   Renders the flexdashboard
 
-### `code/index.Rmd`
+### `code/flexdashboard.Rmd`
 
 -   Produces a interactive data table
 -   Produces a side by side boxplot
